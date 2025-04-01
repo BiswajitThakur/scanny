@@ -177,12 +177,18 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn skeep_while<F: Fn(char) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         while self.peek().is_some_and(&f) {
             self.bump();
         }
         self
     }
     pub fn match_char<F: Fn(&char) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         match self.peek() {
             Some(ch) => {
                 if f(&ch) {
@@ -197,6 +203,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn match_char_optional<F: Fn(&char) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         match self.peek() {
             Some(ch) => {
                 if f(&ch) {
@@ -210,6 +219,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then(&self, ch: char) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         match self.peek() {
             Some(c) if c == ch => {
                 self.bump();
@@ -222,6 +234,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_optional(&self, ch: char) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         match self.peek() {
             Some(c) if c == ch => {
                 self.bump();
@@ -231,6 +246,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_any<F: Fn(Option<char>) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         if f(self.peek()) {
             self.bump();
             self
@@ -240,6 +258,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_peek<F: Fn(Self) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         if f(self.clone()) {
             self
         } else {
@@ -248,6 +269,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_any_optional(&self, chars: &[char]) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         match self.peek() {
             Some(c) if chars.contains(&c) => {
                 self.bump();
@@ -257,6 +281,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn peek_and_consume<F: Fn(Self) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         loop {
             if f(self.clone()) {
                 self.bump();
@@ -267,6 +294,9 @@ impl<'a> Scanny<'a> {
         self
     }
     pub fn consume_while<F: Fn(&char) -> bool>(&self, f: F) -> &Self {
+        if !self.next_match() {
+            return self;
+        }
         loop {
             match self.peek() {
                 Some(ch) if f(&ch) => {

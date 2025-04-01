@@ -39,8 +39,14 @@ impl<T> WithPos<T> {
         self.byte_pos = pos;
         self
     }
+    pub fn get_byte_pos(&self) -> Range<usize> {
+        self.byte_pos.clone()
+    }
     pub fn set_line_pos(mut self, pos: RangeInclusive<usize>) -> Self {
         self.line_pos = pos;
         self
+    }
+    pub fn get_line_pos(&self) -> RangeInclusive<usize> {
+        self.line_pos.clone()
     }
 }
