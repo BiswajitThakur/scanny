@@ -2,6 +2,7 @@
 name = "scanny"
 version = "0.1.0"
 edition = "2024"
+description = "A advanced text scanning library for Rust."
 keywords = ["scanner", "token", "tokenizer", "lexical", "parser"]
 homepage = "https://github.com/BiswajitThakur/scanny"
 repository = "https://github.com/BiswajitThakur/scanny"
