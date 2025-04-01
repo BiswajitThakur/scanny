@@ -2,5 +2,9 @@
 name = "scanny"
 version = "0.1.0"
 edition = "2024"
+keywords = ["scanner", "token", "tokenizer", "lexical", "parser"]
+homepage = "https://github.com/BiswajitThakur/scanny"
+repository = "https://github.com/BiswajitThakur/scanny"
+license = "MIT"
 
 [dependencies]

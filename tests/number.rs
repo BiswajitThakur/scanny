@@ -19,8 +19,14 @@ fn get_float<'a>(sc: &'a Scanny<'a>) -> WithPos<MatchType<'a>> {
                 v.bump();
                 true
             }
-            Some(ch) if ch.is_whitespace() => true,
-            Some(';') => true,
+            Some(ch) if ch.is_whitespace() => {
+                v.matched();
+                true
+            }
+            Some(';') => {
+                v.matched();
+                true
+            }
             Some(_) => false,
             None => true,
         })

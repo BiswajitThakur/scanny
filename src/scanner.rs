@@ -29,13 +29,15 @@ impl<'a> MatchType<'a> {
             Self::Few(_, _) => true,
         }
     }
-    /// on matched, consume match part
+    /// true (default): on matched, consume match part.
+    /// false: on matched, does not consume match part.
     pub fn consume_on_match(&self, v: bool) {
         if let Self::All(_, is_consume) = self {
             *is_consume.borrow_mut() = v;
         }
     }
-    /// on few matched, consume match part
+    /// true (default): on few matched, consume match part.
+    /// false: on few matched, does not consume match part.
     pub fn consume_on_not_match(&self, v: bool) {
         if let Self::Few(_, is_consume) = self {
             *is_consume.borrow_mut() = v;
@@ -48,6 +50,7 @@ struct Matcher<'a> {
     chars: Rc<RefCell<Chars<'a>>>,
     byte_pos: Rc<RefCell<usize>>,
     line: Rc<RefCell<usize>>,
+    is_matched: Rc<RefCell<bool>>,
     match_next: Rc<RefCell<bool>>,
 }
 
@@ -74,11 +77,18 @@ impl<'a> From<&'a str> for Scanny<'a> {
 }
 
 impl<'a> Scanny<'a> {
+    /// Creates a new [Scanny] instance from a given string slice.
+    ///
+    /// # Example
+    /// ```rust
+    /// use scanny::Scanny;
+    ///
+    /// let sc = Scanny::new("let a = 5;");
+    /// ```
     #[inline]
     pub fn new(value: &'a str) -> Self {
         Self::from(value)
     }
-    #[allow(unused)]
     fn next_match(&self) -> bool {
         let m = self.matcher.borrow().clone();
         if let Some(matcher) = m {
@@ -87,6 +97,7 @@ impl<'a> Scanny<'a> {
             true
         }
     }
+    /// [`Self::set_next_match`]: Control token matching behavior
     fn set_next_match(&self, v: bool) {
         let m = self.matcher.clone();
         let mut m = m.borrow_mut();
@@ -95,6 +106,32 @@ impl<'a> Scanny<'a> {
         }
         *m.as_mut().unwrap().match_next.borrow_mut() = v;
     }
+    /// Creates and stores a new `Matcher` instance in the [Scanny] struct.
+    /// # Example 1
+    /// ```rust
+    /// use scanny::Scanny;
+    ///
+    /// let sc = Scanny::new("   hello world ");
+    /// let first_word = sc
+    ///     .skeep_while(|v| v.is_whitespace())
+    ///     .matcher()
+    ///     .match_char(|v|v.is_ascii_alphabetic())
+    ///     .consume_while(|v|v.is_ascii_alphabetic())
+    ///     .finalize(|v| v.value());
+    ///     assert_eq!(first_word.unwrap().value, "hello");
+    /// ```
+    /// # Example 2
+    /// ```rust
+    /// use scanny::Scanny;
+    ///
+    /// let sc = Scanny::new("   hello world ");
+    /// let first_word = sc
+    ///     .skeep_while(|v| v.is_whitespace())
+    ///     .match_char(|v|v.is_ascii_alphabetic())
+    ///     .consume_while(|v|v.is_ascii_alphabetic())
+    ///     .finalize(|v| v.value());
+    ///     assert_eq!(first_word, None);
+    /// ```
     pub fn matcher(&self) -> &Self {
         if self.matcher.borrow().is_some() {
             return self;
@@ -106,11 +143,92 @@ impl<'a> Scanny<'a> {
             chars: Rc::new(RefCell::new(chars)),
             byte_pos: Rc::new(RefCell::new(byte_pos)),
             line: Rc::new(RefCell::new(line)),
+            is_matched: Rc::new(RefCell::new(false)),
             match_next: Rc::new(RefCell::new(true)),
         };
         *self.matcher.borrow_mut() = Some(matcher);
         self
     }
+    /// Return `true`, if the token is matched
+    pub fn is_matched(&self) -> bool {
+        if self.matcher.borrow().is_none() {
+            return false;
+        }
+        let binding = self.matcher.borrow();
+        let matcher = binding.as_ref().unwrap();
+        *matcher.is_matched.borrow()
+    }
+    /// Call this method if the token is matched.
+    /// # Example
+    /// ```rust
+    /// use scanny::{Scanny, MatchType};
+    ///
+    /// fn match_float<'a>(sc: &'a Scanny<'a>) -> MatchType<'a> {    
+    ///     sc.skeep_while(|v| !v.is_ascii_digit())
+    ///         .matcher()
+    ///         .consume_while(|v| v.is_ascii_digit())
+    ///         .then('.')
+    ///         .then_peek(|v| match v.peek() {
+    ///             Some(';') => {
+    ///                 // the token is matched.
+    ///                 v.matched();
+    ///                 true
+    ///             }
+    ///             Some(ch) if ch.is_ascii_digit() => true,
+    ///             Some(_) => false,
+    ///             None => true,
+    ///         })
+    ///         .consume_while(|v| v.is_ascii_digit())
+    ///         .finalize(|v| {
+    ///             // call the following method, if you don't want
+    ///             // to consume the current token when there is no match.
+    ///             // be ware of using this method, it may produce
+    ///             // infinite loop.
+    ///             // if you call the following method it will not
+    ///             // consume `5..7` (`5.` and '7') ant may produce infinite loop.
+    ///             //
+    ///             // v.consume_on_not_match(false);
+    ///             v
+    ///         })
+    ///         .unwrap()
+    ///         .value
+    /// }
+    /// let sc = Scanny::new("23.; 5..7; 9.4; 77; .5; 4.g; 22.40; 78.");
+    /// let mut floats = Vec::new();
+    /// loop {
+    ///     if sc.peek().is_none() {
+    ///         break;
+    ///     }
+    ///     floats.push(match_float(&sc));
+    /// }
+    /// let valid_floats: Vec<&str> =  floats
+    ///     .iter()
+    ///     .filter(|v| v.is_matched())
+    ///     .map(|v| v.value())
+    ///     .collect();
+    /// assert_eq!(valid_floats, vec!["23.", "9.4", "22.40", "78."]);
+    /// ```
+    pub fn matched(&self) -> &Self {
+        if self.matcher.borrow().is_none() {
+            return self;
+        }
+        let mut binding = self.matcher.borrow_mut();
+        *binding.as_mut().unwrap().is_matched.borrow_mut() = true;
+        self
+    }
+    /// Get the next chat without consuming it.
+    /// # Example
+    /// ```rust
+    /// # use scanny::Scanny;
+    /// let sc = Scanny::new("abc");
+    /// assert_eq!(sc.peek(), Some('a'));
+    /// assert_eq!(sc.bump(), Some('a'));
+    /// assert_eq!(sc.bump(), Some('b'));
+    /// assert_eq!(sc.peek(), Some('c'));
+    /// assert_eq!(sc.bump(), Some('c'));
+    /// assert_eq!(sc.peek(), None);
+    /// assert_eq!(sc.bump(), None);
+    /// ```
     pub fn peek(&self) -> Option<char> {
         let mut chars = if self.matcher.borrow().is_some() {
             (*self.matcher.borrow().as_ref().unwrap().chars.borrow()).clone()
@@ -119,6 +237,7 @@ impl<'a> Scanny<'a> {
         };
         chars.next()
     }
+    /// Return the second char without consuming it.
     pub fn peek_second(&self) -> Option<char> {
         let mut chars = if self.matcher.borrow().is_some() {
             (*self.matcher.borrow().as_ref().unwrap().chars.borrow()).clone()
@@ -128,6 +247,7 @@ impl<'a> Scanny<'a> {
         chars.next();
         chars.next()
     }
+    /// Return third char without consuming it.
     pub fn peek_third(&self) -> Option<char> {
         let mut chars = if self.matcher.borrow().is_some() {
             (*self.matcher.borrow().as_ref().unwrap().chars.borrow()).clone()
@@ -138,6 +258,8 @@ impl<'a> Scanny<'a> {
         chars.next();
         chars.next()
     }
+    /// Return nth char without consuming it.
+    /// Time Complexity: `O(n)`
     pub fn peek_nth(&self, n: usize) -> Option<char> {
         let mut chars = if self.matcher.borrow().is_some() {
             (*self.matcher.borrow().as_ref().unwrap().chars.borrow()).clone()
@@ -146,6 +268,7 @@ impl<'a> Scanny<'a> {
         };
         chars.nth(n)
     }
+    /// Return and consume the next char
     pub fn bump(&self) -> Option<char> {
         if self.matcher.borrow().is_some() {
             let matcher = self.matcher.clone().borrow_mut().clone().unwrap();
@@ -177,6 +300,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn skeep_while<F: Fn(char) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -185,7 +311,11 @@ impl<'a> Scanny<'a> {
         }
         self
     }
+    /// match the next char, consume on match.
     pub fn match_char<F: Fn(&char) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -203,6 +333,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn match_char_optional<F: Fn(&char) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -218,7 +351,11 @@ impl<'a> Scanny<'a> {
             None => self,
         }
     }
+    /// match the next char, consume on match.
     pub fn then(&self, ch: char) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -234,6 +371,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_optional(&self, ch: char) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -246,6 +386,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_any<F: Fn(Option<char>) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -257,7 +400,11 @@ impl<'a> Scanny<'a> {
             self
         }
     }
+    /// Conditionally perform actions like `peek` or `bump` based on a predicate.
     pub fn then_peek<F: Fn(Self) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -269,6 +416,9 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn then_any_optional(&self, chars: &[char]) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -280,7 +430,12 @@ impl<'a> Scanny<'a> {
             _ => self,
         }
     }
+    /// Conditionally perform actions like `peek` or `bump` based on a predicate.
+    /// Bump the next char if the callback fn return true until it return false.
     pub fn peek_and_consume<F: Fn(Self) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -293,7 +448,11 @@ impl<'a> Scanny<'a> {
         }
         self
     }
+    /// Bump the next char until callback fn return false.
     pub fn consume_while<F: Fn(&char) -> bool>(&self, f: F) -> &Self {
+        if self.is_matched() {
+            return self;
+        }
         if !self.next_match() {
             return self;
         }
@@ -307,6 +466,7 @@ impl<'a> Scanny<'a> {
         }
         self
     }
+    /// Consume the `Matcher` instance.
     pub fn finalize<T, F: Fn(MatchType<'a>) -> T>(&self, f: F) -> Option<WithPos<T>> {
         let matcher = self.matcher.borrow_mut().take()?;
         let byte_pos = *self.byte_pos.borrow()..*matcher.byte_pos.borrow();
@@ -314,12 +474,12 @@ impl<'a> Scanny<'a> {
         let matched = self.whole.get(byte_pos.clone()).unwrap();
         let consume_on_match = Rc::new(RefCell::new(true));
         let consume_on_not_match = Rc::new(RefCell::new(true));
-        let got = f(if *matcher.match_next.borrow() {
+        let got = f(if self.is_matched() || *matcher.match_next.borrow() {
             MatchType::All(matched, consume_on_match.clone())
         } else {
             MatchType::Few(matched, consume_on_not_match.clone())
         });
-        if *matcher.match_next.borrow() {
+        if self.is_matched() || *matcher.match_next.borrow() {
             if *consume_on_match.borrow() {
                 *self.chars.borrow_mut() = matcher.chars.borrow().clone();
                 *self.byte_pos.borrow_mut() = *matcher.byte_pos.borrow();
