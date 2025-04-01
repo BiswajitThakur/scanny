@@ -31,20 +31,14 @@ impl<'a> MatchType<'a> {
     }
     /// on matched, consume match part
     pub fn consume_on_match(&self, v: bool) {
-        match self {
-            Self::All(_, is_consume) => {
-                *is_consume.borrow_mut() = v;
-            }
-            _ => {}
+        if let Self::All(_, is_consume) = self {
+            *is_consume.borrow_mut() = v;
         }
     }
     /// on few matched, consume match part
     pub fn consume_on_not_match(&self, v: bool) {
-        match self {
-            Self::Few(_, is_consume) => {
-                *is_consume.borrow_mut() = v;
-            }
-            _ => {}
+        if let Self::Few(_, is_consume) = self {
+            *is_consume.borrow_mut() = v;
         }
     }
 }
@@ -84,6 +78,7 @@ impl<'a> Scanny<'a> {
     pub fn new(value: &'a str) -> Self {
         Self::from(value)
     }
+    #[allow(unused)]
     fn next_match(&self) -> bool {
         let m = self.matcher.borrow().clone();
         if let Some(matcher) = m {
@@ -105,8 +100,8 @@ impl<'a> Scanny<'a> {
             return self;
         }
         let chars = (*self.chars.borrow()).clone();
-        let byte_pos = (*self.byte_pos.borrow()).clone();
-        let line = (*self.line.borrow()).clone();
+        let byte_pos = *self.byte_pos.borrow();
+        let line = *self.line.borrow();
         let matcher = Matcher {
             chars: Rc::new(RefCell::new(chars)),
             byte_pos: Rc::new(RefCell::new(byte_pos)),
@@ -182,7 +177,7 @@ impl<'a> Scanny<'a> {
         }
     }
     pub fn skeep_while<F: Fn(char) -> bool>(&self, f: F) -> &Self {
-        while self.peek().map_or(false, &f) {
+        while self.peek().is_some_and(&f) {
             self.bump();
         }
         self
@@ -284,8 +279,8 @@ impl<'a> Scanny<'a> {
     }
     pub fn finalize<T, F: Fn(MatchType<'a>) -> T>(&self, f: F) -> Option<WithPos<T>> {
         let matcher = self.matcher.borrow_mut().take()?;
-        let byte_pos = self.byte_pos.borrow().clone()..matcher.byte_pos.borrow().clone();
-        let line_pos = self.line.borrow().clone()..=matcher.line.borrow().clone();
+        let byte_pos = *self.byte_pos.borrow()..*matcher.byte_pos.borrow();
+        let line_pos = *self.line.borrow()..=*matcher.line.borrow();
         let matched = self.whole.get(byte_pos.clone()).unwrap();
         let consume_on_match = Rc::new(RefCell::new(true));
         let consume_on_not_match = Rc::new(RefCell::new(true));
@@ -300,12 +295,10 @@ impl<'a> Scanny<'a> {
                 *self.byte_pos.borrow_mut() = *matcher.byte_pos.borrow();
                 *self.line.borrow_mut() = *matcher.line.borrow();
             }
-        } else {
-            if *consume_on_not_match.borrow() {
-                *self.chars.borrow_mut() = matcher.chars.borrow().clone();
-                *self.byte_pos.borrow_mut() = *matcher.byte_pos.borrow();
-                *self.line.borrow_mut() = *matcher.line.borrow();
-            }
+        } else if *consume_on_not_match.borrow() {
+            *self.chars.borrow_mut() = matcher.chars.borrow().clone();
+            *self.byte_pos.borrow_mut() = *matcher.byte_pos.borrow();
+            *self.line.borrow_mut() = *matcher.line.borrow();
         }
         Some(
             WithPos::new(got)
@@ -313,63 +306,6 @@ impl<'a> Scanny<'a> {
                 .set_line_pos(line_pos),
         )
     }
-}
-
-#[test]
-#[ignore = "reason"]
-fn test_scanny() {
-    let sc = Scanny::from(
-        r#"
-let foo_bar = "Hello \" \
-World";
-   1234.567
-        "#,
-    );
-    let mut items = Vec::new();
-    loop {
-        sc.skeep_while(char::is_whitespace);
-        let peek = sc.peek();
-        if peek.is_none() {
-            break;
-        }
-        match peek.unwrap() {
-            v if v.is_ascii_alphabetic() || v == '_' => {
-                let matched = sc
-                    .matcher()
-                    .consume_while(|v| v.is_ascii_alphanumeric() || v == &'_')
-                    .finalize(|m| m.value());
-                items.push(matched);
-            }
-            '"' => {
-                let matched = sc
-                    .matcher()
-                    .then('"')
-                    .peek_and_consume(|scanner| {
-                        if scanner.peek() == Some('\\') {
-                            scanner.bump();
-                        }
-                        scanner.peek() != Some('"')
-                    })
-                    .then('"')
-                    .finalize(|m| m.value());
-            }
-            v if v.is_ascii_digit() => {
-                let num = sc
-                    .matcher()
-                    .consume_while(char::is_ascii_digit)
-                    .then('$')
-                    .consume_while(char::is_ascii_digit)
-                    .then_optional(';')
-                    .finalize(|matched| matched.value())
-                    .unwrap();
-                // assert_eq!(num, WithPos::from(("100", 2..7, 1..=1)));
-            }
-            _ => {
-                sc.bump();
-            }
-        }
-    }
-    println!("{:?}", items);
 }
 
 #[cfg(test)]
